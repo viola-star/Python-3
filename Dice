@@ -1,12 +1,16 @@
 import random
 
+def func(x, y) :
+    print(random.randint(x,y))
+
+
 print("Following program for rolling dice")
 x="True";
 while (x!="False"):
-           print(random.randrange(1,6,1))
+           func(1,6)
            print("Again?True or False")
            x = input()
            print(x)
 
 #python considers any non empty string true so cant convert x to bool, have to compare strings
-                                         
+                           
