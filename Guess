@@ -9,18 +9,23 @@ def diff(randno, userno):
         print("You have given too small a number")
 
 def isno (x):
-    if(type(x)==int):
+    if((x.isdigit()) and (0<=int(x)<=10)):
         return "true"
-    else:  
+    else:
         return "false"
 
 
-x= random.randint(0,10000)
-y=int(input())
-if (isno=="false"):
-    print("Not actual no")
-elif (x==y):
-    print("Absolutely correct guess!")
-else:
-    diff(x,y)
+x= random.randint(0,10)
+print("Type Done if you are done half way")
+while(1):
+   y=input()
+   if(y=="Done"):
+       break;
+   if (isno(y)=="false"):
+     print("Not actual no")
+   elif (x==int(y)):
+     print("Absolutely correct guess!")
+     break
+   else:
+     diff(x,int(y))
         
