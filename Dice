@@ -5,10 +5,10 @@ def func(x, y) :
 
 
 print("Following program for rolling dice")
-x="True";
-while (x!="False"):
+x="t";
+while (x.lower()!="f"):
            func(1,6)
-           print("Again?True or False")
+           print("Again?t or f")
            x = input()
            print(x)
 
