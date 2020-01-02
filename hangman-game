@@ -1,1 +1,48 @@
+#hangman game
+
+import random
+
+def func(x):
+    if(len(x)>1):
+        return "false"
+    elif(x.isalpha()):
+        return "true"
+    else:
+        return "false"
+
+def chooseword():
+    l=["cabbage", "dewdrop", "whisker", "roast" , "waterfall"]
+    return l[random.randint(0,4)]
+
+x=chooseword()
+y=list("_"*len(x))
+ans=""
+for i in y:
+    ans+=(i+" ")
+print(ans) # important part
+counter=0
+complete=False
+print("If you make more than five wrong guesses at a go you are out")
+while ((counter<=5) or (complete!=True)):
+    print("Enter a single letter")
+    t = input()
+    if (func(t)==False):
+        print ("Please enter single letter next time")
+    else:
+        l=len(y)
+        for i in range(0,l):
+            if(y[i]=='_'):
+                complete=False
+            if(x[i]==t.lower()):
+                y[i]=t.lower()
+                counter=0
+            else:
+                counter+=1
+    ans=""
+    for i in y:
+       ans+=(i+" ")
+    print(ans)        
+    
+    
+    
 
