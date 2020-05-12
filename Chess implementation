@@ -1,0 +1,315 @@
+import re
+
+SPACE = "_"
+
+
+def get_final_board_state(pgn_file: str) -> [[str]]:
+    squares = [y + x for x in "87654321" for y in "abcdefgh"]
+    pieces = "RNBQKBNR".lower() + "p" * 8 + SPACE * 32 + "P" * 8 + "RNBQKBNR"  # capital letters- white PIECES
+    moves = pgn_to_moves(pgn_file)
+    boardview = dict(zip(squares, pieces))
+    pieceview = dict({piece: [] for piece in pieces})
+    for square, piece in boardview.items():
+        pieceview[piece].append(square)
+    for move in moves:
+        processmove(move, boardview, pieceview)
+    return formatted(boardview)
+
+
+def pgn_to_moves(pgn_file: str) -> [str]:
+    cleaned_up = pgn_file.replace("+", "").replace("#", "").replace("e.p.", "")
+    uncommented = re.sub("<.*>", " ", cleaned_up.replace("{", "<").replace("}", ">"))
+    detailsremoved = re.sub("<.*>", " ", uncommented.replace("[", "<").replace("]", ">"))
+    scoreremoved = re.sub("( *1/2-1/2 *| *1-0 *| *0-1 *)", " ", detailsremoved)
+    moves = [move.strip() for move in re.split(" *[1-9]*[0-9] *\. *", scoreremoved)[1:]]
+    return [preprocessmove(move) for move in moves]
+
+
+def preprocessmove(move: str) -> str:
+    plies = [("P" + ply) if is_pawn_ply(ply) else ply for ply in move.split()]
+    if len(plies) == 2 and not is_castle(plies[1]):
+        plies[1] = plies[1][0].lower() + plies[1][1:]
+    return " ".join(plies)
+
+
+def is_piece(piece: str) -> bool:
+    return piece in "RBKQNRrbkqnr"
+
+
+def is_square(square: str) -> bool:
+    return square[0] in "abcdefgh" and square[1:] in "12345678"
+
+
+def is_pawn_ply(ply: str) -> bool:
+    return (not is_piece(ply[0]) or is_square(ply[:2])) and not is_castle(ply)
+
+
+def is_castle(ply: str) -> bool:
+    return ply.upper() in ["O-O", "O-O-O"]
+
+
+def processmove(move: str, boardview: dict, pieceview: dict):
+    process_ply("W", move.split()[0], boardview, pieceview)
+    if len(move.split()) == 2:
+        process_ply("B", move.split()[1], boardview, pieceview)
+
+
+def process_ply(color: str, ply: str, boardview: dict, pieceview: dict):
+    if is_castle(ply):
+        castle(color, ply, boardview, pieceview)
+    elif ply[0].upper() == "P":
+        move_pawn(color, ply, boardview, pieceview)
+    elif is_capture(ply):
+        capture(ply, boardview, pieceview)
+    else:
+        move_piece_into_empty_space(ply, boardview, pieceview)
+
+
+def castle(color: str, ply: str, boardview: dict, pieceview: dict):
+    king_pos = {"W": "e1", "B": "e8"}[color]
+    king, rook = {"W": "K", "B": "k"}[color], {"W": "R", "B": "r"}[color]
+
+    if ply == "O-O":
+        rook_pos = {"W": "h1", "B": "h8"}[color]
+        new_king_pos = {"W": "g1", "B": "g8"}[color]
+        new_rook_pos = {"W": "f1", "B": "f8"}[color]
+    else:
+        rook_pos = {"W": "a1", "B": "a8"}[color]
+        new_king_pos = {"W": "c1", "B": "c8"}[color]
+        new_rook_pos = {"W": "d1", "B": "d8"}[color]
+
+    update_new_location(boardview, pieceview, king_pos, new_king_pos, king)
+    update_new_location(boardview, pieceview, rook_pos, new_rook_pos, rook)
+
+
+def move_pawn(color: str, ply: str, boardview: dict, pieceview: dict):
+    if is_pawn_promoted(ply):
+        pawn_promotion(color, ply, boardview, pieceview)
+    elif is_capture(ply):
+        if is_en_passant_capture(ply, boardview):
+            en_passant_capture(color, ply, boardview, pieceview)
+        else:
+            capture(ply, boardview, pieceview)
+    else:
+        move_piece_into_empty_space(ply, boardview, pieceview)
+
+
+def is_en_passant_capture(ply: str, boardview: dict) -> bool:
+    return is_square(ply[-2:]) and boardview[ply[-2:]] == SPACE
+
+
+def en_passant_capture(color: str, ply: str, boardview: dict, pieceview: dict):
+    move_piece_into_empty_space(ply[: -3] + ply[-2:], boardview, pieceview)
+
+    if color == "B":  # attacking pawn is black
+        captured_pawn = "P"
+        captured_pawn_pos = ply[-2: -1] + chr(ord(ply[-1]) + 1)
+    else:
+        captured_pawn = "p"
+        captured_pawn_pos = ply[-2: -1] + chr(ord(ply[-1]) - 1)
+
+    boardview[captured_pawn_pos] = SPACE
+    pieceview[captured_pawn].remove(captured_pawn_pos)
+
+
+def is_pawn_promoted(ply: str) -> bool:
+    return "=" in ply
+
+
+def pawn_promotion(color: str, ply: str, boardview: dict, pieceview: dict):
+    promoted_to = {"W": ply[-1], "B": ply[-1].lower()}[color]
+    new_square = ply[-4: -2]
+    process_ply(color, ply[: -2], boardview, pieceview)
+    boardview[new_square] = promoted_to
+    pieceview[ply[0]].remove(new_square)
+    pieceview[promoted_to].append(new_square)
+
+
+def is_capture(ply: str) -> bool:
+    return "x" in ply
+
+
+def capture(ply: str, boardview: dict, pieceview: dict):
+    ply = ply[: -3] + ply[-2:]  # Bf7
+    captured_piece = boardview[ply[-2:]]  # p
+    if ply[0].upper() == "P":
+        move_piece_into_empty_space(ply, boardview, pieceview, captured_piece, True)
+    else:
+        move_piece_into_empty_space(ply, boardview, pieceview, captured_piece)
+
+
+def move_piece_into_empty_space(ply: str, boardview: dict, pieceview: dict, captured_piece=SPACE,
+                                ispawncapture=False):
+    piece = ply[0]
+    end_square = ply[-1: -3: -1][:: -1]
+    to_match = ply[1: -2]
+    for start_square in pieceview[piece]:
+        if is_possible_move_into_empty(start_square, end_square, piece, boardview, ispawncapture) \
+                and is_matching(start_square, to_match):
+            update_new_location(boardview, pieceview, start_square, end_square, piece, captured_piece)
+            break
+
+
+def is_correct_pawn_direction(pawn: str, startsquare: str, endsquare: str):
+    return {"P": (int(endsquare[1]) > int(startsquare[1])), "p": (int(startsquare[1]) > int(endsquare[1]))}[pawn]
+
+
+def is_matching(pos: str, to_match: str) -> bool:
+    if to_match == "":
+        return True
+    elif to_match in "12345678":
+        return pos[1] == to_match
+    elif to_match in "abcdefgh":
+        return pos[0] == to_match
+    else:
+        return pos == to_match
+
+
+def is_possible_move_into_empty(startsquare: str, endsquare: str, piece: str, boardview: dict, ispawncapture=False):
+    xdist = ord(startsquare[0]) - ord(endsquare[0])
+    ydist = ord(startsquare[1]) - ord(endsquare[1])
+    if ispawncapture:
+        return is_possible_pawn_move_into_occupied(startsquare, endsquare, xdist, ydist, piece, boardview)
+    else:
+        return {"P": is_possible_pawn_move_into_empty(startsquare, xdist, ydist, piece),
+                "B": is_possible_bishop_move(startsquare, endsquare, xdist, ydist, piece, boardview),
+                "K": is_possible_king_move(xdist, ydist),
+                "Q": is_possible_queen_move(startsquare, endsquare, xdist, ydist, boardview),
+                "N": is_possible_knight_move(xdist, ydist),
+                "R": is_possible_rook_move(startsquare, endsquare, xdist, ydist, piece, boardview)}[piece.upper()]
+
+
+def is_possible_pawn_move_into_empty(startsquare: str, xdist: int, ydist: int, piece: str):
+    whitepawninitialrank = "2"
+    blackpawninitialrank = "7"
+    if piece.islower():  # black
+        if startsquare[1] == blackpawninitialrank:
+            return xdist == 0 and ydist in [1, 2]
+        else:
+            return xdist == 0 and ydist == 1
+    else:
+        if startsquare[1] == whitepawninitialrank:
+            return xdist == 0 and ydist in [-1, -2]
+        else:
+            return xdist == 0 and ydist == -1
+
+
+def is_possible_pawn_move_into_occupied(startsquare: str, endsquare: str, xdist: int, ydist: int, piece: str,
+                                        boardview: dict):
+    return is_possible_bishop_move(startsquare, endsquare, xdist, ydist, piece, boardview) \
+           and is_possible_king_move(xdist, ydist) \
+           and is_correct_pawn_direction(piece, startsquare, endsquare)
+
+
+def is_possible_king_move(xdist: int, ydist: int):
+    return abs(xdist) in [0, 1] and abs(ydist) in [0, 1]
+
+
+def is_possible_queen_move(startsquare: str, endsquare: str, xdist: int, ydist: int, boardview: dict):
+    return is_possible_bishop_move(startsquare, endsquare, xdist, ydist, "B", boardview) \
+           or is_possible_rook_move(startsquare, endsquare, xdist, ydist, "R", boardview)
+
+
+def is_possible_knight_move(xdist: int, ydist: int):
+    return (abs(xdist), abs(ydist)) == (1, 2) or (abs(xdist), abs(ydist)) == (2, 1)
+
+
+def is_possible_rook_move(startsquare: str, endsquare: str, xdist: int, ydist: int, piece: str, boardview: dict):
+    return (xdist == 0 or ydist == 0) and is_empty_path(piece, startsquare, endsquare, boardview)
+
+
+def is_possible_bishop_move(startsquare: str, endsquare: str, xdist: int, ydist: int, piece: str, boardview: dict):
+    return abs(xdist) == abs(ydist) and is_empty_path(piece, startsquare, endsquare, boardview)
+
+
+def is_empty_path(piece: str, startsquare: str, endsquare: str, boardview: dict) -> bool:
+    startsquare, endsquare = get_squares_order(startsquare, endsquare, piece)
+    s_file, s_rank = startsquare[0], startsquare[1]
+    e_file, e_rank = endsquare[0], endsquare[1]
+
+    if piece.upper() == "R":
+        if s_file == e_file:  # eg A1, A7
+            return all([boardview[s_file + r] == SPACE for r in
+                        "12345678"[ord(s_rank): ord(e_rank) - 1]])
+        else:
+            return all([boardview[f + s_rank] == SPACE for f in
+                        "abcdefgh"[ord(s_file) - ord("a") + 1: ord(e_file) - ord("a")]])
+    else:
+        if ord(e_rank) > ord(s_rank):  # a2, c4
+            return all([boardview[f + r] == SPACE for f, r in
+                        zip("abcdefgh"[ord(s_file) - ord("a") + 1: ord(e_file) - ord("a")],
+                            "12345678"[ord(s_rank): ord(e_rank) - 1])])
+
+
+def get_squares_order(startsquare: str, endsquare: str, piece: str):
+    s_file, s_rank = startsquare[0], startsquare[1]
+    e_file, e_rank = endsquare[0], endsquare[1]
+    if ord(e_rank) < ord(s_rank):  # for bishop swap if lower, for rook swap if lower
+        return endsquare, startsquare
+    elif ord(e_file) < ord(s_file) and piece.upper() == "R":  # for bishop if lower
+        return endsquare, startsquare
+    else:
+        return startsquare, endsquare
+
+
+def update_new_location(boardview: dict, pieceview: dict, pos1: str, pos2: str, piece: str, captured_piece=SPACE):
+    boardview[pos1], boardview[pos2] = SPACE, piece
+    pieceview[piece].remove(pos1)
+    pieceview[piece].append(pos2)
+    if captured_piece != SPACE:
+        pieceview[captured_piece].remove(pos2)
+
+
+def formatted(boardview: dict) -> [[str]]:
+    formatted_bv = []
+    for i, square in enumerate(boardview.keys()):
+        if i % 8 == 0:
+            formatted_bv.append([boardview[square]])
+        else:
+            formatted_bv[-1].append(boardview[square])
+    return formatted_bv
+
+
+pgn_file1 = ("""[Event "F/S Return Match"]
+[Site "Belgrade, Serbia JUG"]
+[Date "1992.11.04"]
+[Round "29"]
+[White "Fischer, Robert J."]
+[Black "Spassky, Boris V."]
+[Result "1/2-1/2"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 {This opening is called the Ruy Lopez.} 
+4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7 
+11. c4 c6 12. cxb5 axb5 13. Nc3 Bb7 14. Bg5 b4 15. Nb1 h6 16. Bh4 c5 17. 
+dxe5 Nxe4 18. Bxe7 Qxe7 19. exd6 Qf6 20. Nbd2 Nxd6 21. Nc4 Nxc4 22. Bxc4 Nb6 
+23. Ne5 Rae8 24. Bxf7+ Rxf7 25. Nxf7 Rxe1+ 26. Qxe1 Kxf7 27. Qe3 Qg5 28. Qxg5 
+hxg5 29. b3 Ke6 30. a3 Kd6 31. axb4 cxb4 32. Ra5 Nd5 33. f3 Bc8 34. Kf2 Bf5 35. 
+Ra7 g6 36. Ra6+ Kc5 37. Ke1 Nf4 38. g3 Nxh3 39. Kd2 Kb5 40. Rd6 Kc5 41. Ra6 Nf2 
+42. g4 Bd3 43. Re6 1/2-1/2""")
+
+pgn_file2 = """1. b3 e5 2. Bb2 Nc6 3. c4 Nf6 4. Nf3 e4 5. Nd4 Bc5 6. Nxc6 dxc6 7. e3 Bf5 8. Qc2 Qe7 9. Be2 O-O-O 
+10. f4 Ng4 11. g3 h5 12. h3 h4 13. hxg4 hxg3 14. Rg1 Rh1 15. Rxh1 g2 16. Rf1 Qh4+ 17. Kd1 gxf1=Q+ 0-1
+"""  # pawn promotion
+
+pgn_file3 = """[Event "Moscow"]
+[Site "Moscow RUS"]
+[Date "1918.??.??"]
+[EventDate "?"]
+[Round "?"]
+[Result "1-0"]
+[White "Alexander Alekhine"]
+[Black "Abram Isaakovich Rabinovich"]
+[ECO "C42"]
+[WhiteElo "?"]
+[BlackElo "?"]
+[PlyCount "57"]
+
+1. e4 e5 2. Nf3 Nf6 3. Nxe5 d6 4. Nf3 Nxe4 5. Nc3 d5 6. Qe2
+Be7 7. Nxe4 dxe4 8. Qxe4 O-O 9. Bc4 Bd6 10. O-O Re8 11. Qd3
+Nc6 12. b3 Qf6 13. Bb2 Qxb2 14. Ng5 Be6 15. Bxe6 fxe6
+16. Qxh7+ Kf8 17. Rae1 Qf6 18. Qh5 Kg8 19. Re3 Bf4 20. Qh7+
+Kf8 21. Qh8+ Ke7 22. Rxe6+ Qxe6 23. Qxg7+ Kd6 24. Nxe6 Rxe6
+25. d4 Rae8 26. c4 R8e7 27. Qf8 Re4 28. Qf5 Rxd4 29. c5# 1-0"""  # en passant
+
+for row in get_final_board_state(pgn_file3):
+    print(row)
