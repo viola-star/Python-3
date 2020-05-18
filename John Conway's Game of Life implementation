@@ -1,0 +1,69 @@
+LIVE = "*"
+DEAD = "_"
+
+
+def get_final_grid(grid: [str], no_of_generations=1) -> [[str]]:
+    live_cell_indices = get_live_cell_indices(grid)
+    for i in range(no_of_generations):
+        live_cell_indices = update_to_next_gen(live_cell_indices)
+    return get_grid_form(live_cell_indices)
+
+
+def get_live_cell_indices(grid: [str]) -> [(int, int)]:
+    return [(x, y) for x, row in enumerate(grid) for y, cell in enumerate(row) if cell == LIVE]
+
+
+def update_to_next_gen(live_cell_indices: [(int, int)]) -> [(int, int)]:
+    to_remain = get_indices_remain_alive(live_cell_indices)
+    to_be_born = get_indices_to_be_born(live_cell_indices)
+    return to_remain + to_be_born
+
+
+def get_count_live_neighbours(x: int, y: int, live_cell_indices: [(int, int)]) -> int:
+    return [(i, j) in live_cell_indices for (i, j) in get_neighbours(x, y)].count(True)
+
+
+def get_neighbours(x: int, y: int) -> [(int, int)]:
+    step = [1, 0, -1]
+    return [(x + dx, y + dy) for dx in step for dy in step if (dx, dy) != (0, 0)]
+
+
+def get_indices_remain_alive(live_cell_indices: [(int, int)]) -> [(int, int)]:
+    no_of_live_neighbours_reqd = [2, 3]
+    return [(x, y) for (x, y) in live_cell_indices
+            if get_count_live_neighbours(x, y, live_cell_indices) in no_of_live_neighbours_reqd]
+
+
+def get_indices_to_be_born(live_cell_indices: [(int, int)]) -> [(int, int)]:
+    no_of_live_neighbours_reqd = 3
+    candidates = get_indices_candidates(live_cell_indices)
+    return [(x, y) for (x, y) in candidates
+            if get_count_live_neighbours(x, y, live_cell_indices) == no_of_live_neighbours_reqd]
+
+
+def get_indices_candidates(live_cell_indices: [(int, int)]) -> [(int, int)]:
+    neighbours = []
+    for (x, y) in live_cell_indices:
+        neighbours += get_neighbours(x, y)
+    return [(i, j) for (i, j) in neighbours if (i, j) not in live_cell_indices]
+
+
+def get_grid_form(live_cell_indices: [(int, int)]) -> str:
+    min_x, min_y, max_x, max_y = get_grid_dimensions(live_cell_indices)
+    grid_form = [] * (max_x - min_x + 1)
+    for i in range(min_x, max_x + 1):
+        grid_form.append("")
+        for j in range(min_y, max_y + 1):
+            grid_form[-1] += LIVE if (i, j) in live_cell_indices else DEAD
+    return grid_form
+
+
+def get_grid_dimensions(live_cell_indices: [(int, int)]) -> (int, int):
+    return min([i for (i, j) in live_cell_indices]), min([j for (i, j) in live_cell_indices]), \
+           max([i for (i, j) in live_cell_indices]), max([j for (i, j) in live_cell_indices])
+
+
+print("\n".join(get_final_grid(["_*_________________**__",
+                                "__*________***_____**__",
+                                "***__________________**",
+                                "_____________________**"], 8)).strip())
